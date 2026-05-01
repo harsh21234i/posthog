@@ -13,6 +13,7 @@ import { AutoSizer } from 'lib/components/AutoSizer'
 import { PropertyFilterIcon } from 'lib/components/PropertyFilters/components/PropertyFilterIcon'
 import { PropertyKeyInfo } from 'lib/components/PropertyKeyInfo'
 import { RestrictionScope, useRestrictedArea } from 'lib/components/RestrictedArea'
+import { recentTaxonomicFiltersLogic } from 'lib/components/TaxonomicFilter/recentTaxonomicFiltersLogic'
 import { TaxonomicFilter } from 'lib/components/TaxonomicFilter/TaxonomicFilter'
 import { TaxonomicFilterGroupType } from 'lib/components/TaxonomicFilter/types'
 import { TeamMembershipLevel } from 'lib/constants'
@@ -29,14 +30,17 @@ import {
     isEventsQuery,
     isGroupsQuery,
     isSessionsQuery,
-    taxonomicEventFilterToHogQL,
-    taxonomicGroupFilterToHogQL,
-    taxonomicPersonFilterToHogQL,
     trimQuotes,
 } from '~/queries/utils'
 import { GroupTypeIndex, PropertyFilterType } from '~/types'
+import { teamLogic } from 'scenes/teamLogic'
 
 import { defaultDataTableColumns, extractExpressionComment, removeExpressionComment } from '../utils'
+import {
+    buildRecentColumnSelectionItem,
+    getRecentColumnSelectionContext,
+    taxonomicColumnSelectionToHogQL,
+} from './columnConfiguratorUtils'
 import { ColumnConfiguratorLogicProps, columnConfiguratorLogic } from './columnConfiguratorLogic'
 
 let uniqueNode = 0
@@ -128,6 +132,7 @@ function ColumnConfiguratorModal({ query }: ColumnConfiguratorProps): JSX.Elemen
     const { hideModal, moveColumn, setColumns, selectColumn, unselectColumn, save, toggleSaveAsDefault } =
         useActions(columnConfiguratorLogic)
     const { context } = useValues(columnConfiguratorLogic)
+    const { currentTeamId } = useValues(teamLogic)
 
     const onEditColumn = (column: string, index: number): void => {
         const newColumn = window.prompt('Edit column', column)
@@ -235,14 +240,23 @@ function ColumnConfiguratorModal({ query }: ColumnConfiguratorProps): JSX.Elemen
                                             width={width}
                                             taxonomicGroupTypes={taxonomicGroupTypes}
                                             value={undefined}
-                                            onChange={(group, value) => {
-                                                const column = isGroupsQuery(query.source)
-                                                    ? taxonomicGroupFilterToHogQL(group.type, value)
-                                                    : isActorsQuery(query.source)
-                                                      ? taxonomicPersonFilterToHogQL(group.type, value)
-                                                      : taxonomicEventFilterToHogQL(group.type, value)
+                                            onChange={(group, value, item) => {
+                                                const { sourceGroupType, sourceGroupName } =
+                                                    getRecentColumnSelectionContext(group, item)
+                                                const column = taxonomicColumnSelectionToHogQL(
+                                                    query.source,
+                                                    sourceGroupType,
+                                                    value
+                                                )
                                                 if (column !== null) {
                                                     selectColumn(column)
+                                                    recentTaxonomicFiltersLogic.actions.recordRecentFilter(
+                                                        sourceGroupType,
+                                                        sourceGroupName,
+                                                        value,
+                                                        buildRecentColumnSelectionItem(item, value),
+                                                        currentTeamId ?? undefined
+                                                    )
                                                 }
                                             }}
                                             popoverEnabled={false}
